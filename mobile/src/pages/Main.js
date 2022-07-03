@@ -3,7 +3,9 @@ import { StyleSheet, Image, View, Text, TextInput, TouchableOpacity } from 'reac
 import { useEffect, useState } from 'react';
 import { requestForegroundPermissionsAsync, getCurrentPositionAsync } from 'expo-location';
 import { MaterialIcons } from '@expo/vector-icons';
+
 import api from '../services/api';
+import { connect, disconnect, subscribeToNewDevs, unsubscribeDev } from '../services/socket';
 
 function Main({ navigation }) {
 
@@ -25,12 +27,26 @@ function Main({ navigation }) {
         loadInitialPosition();
     }, [])
 
+    useEffect(()=> {
+        subscribeToNewDevs(dev => setDevs([...devs, dev]));
+        unsubscribeDev(github_username => setDevs(devs.filter(dev => dev.github_username !== github_username)));
+    }, [devs]);
+
+    function setupWebsocket() {
+        disconnect();
+
+        const {latitude, longitude} = currentRegion;
+
+        connect(latitude, longitude, techs);
+    }
+
     async function loadDevs() {
         const { latitude, longitude } = currentRegion;
 
-        const res = await api.get('/search', { params: {latitude, longitude, techs: techs} });
+        const res = await api.get('/search', { params: { latitude, longitude, techs: techs } });
 
         setDevs(res.data.dev);
+        setupWebsocket();
     }
 
     if (!currentRegion) {
