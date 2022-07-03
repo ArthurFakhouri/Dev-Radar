@@ -1,6 +1,7 @@
 const axios = require('axios');
 const parseStringAsArray = require('../utils/parseStringAsArray');
 const Dev = require('../models/Dev');
+const { findConnections, sendMessage } = require('../websocket');
 
 module.exports = {
     async index(req, res) {
@@ -35,32 +36,44 @@ module.exports = {
                 techs: techsArray,
                 location
             });
+
+            const sendSocketMessageTo = findConnections({ latitude, longitude }, techsArray);
+
+            sendMessage(sendSocketMessageTo, 'new-dev', dev);
         } else {
-            dev = {error: 'This user is already registered!'};
+            dev = { error: 'This user is already registered!' };
         }
 
         return res.json(dev);
     },
 
     async update(req, res) {
-        const {github_username, name, avatar_url, bio, latitude, longitude, techs} = req.query;
+        const { github_username, name, avatar_url, bio, latitude, longitude, techs } = req.query;
 
         const techsArray = parseStringAsArray(techs);
-        
+
         const location = {
             type: 'Point',
             coordinates: [longitude, latitude],
         };
 
-        await Dev.updateOne({github_username}, {name, avatar_url, bio, location, techs: techsArray}).then(()=>res.json({'callback': 'Updated with success!'}))
-        .catch(error=>res.json({'callback': error}));
+        await Dev.updateOne({ github_username }, { name, avatar_url, bio, location, techs: techsArray }).then(() => res.json({ 'callback': 'Updated with success!' }))
+            .catch(error => res.json({ 'callback': error }));
     },
 
     async destroy(req, res) {
-        const {github_username} = req.query;
+        const { github_username } = req.query;
 
-        await Dev.deleteOne({github_username}).then(()=>
-         {res.json({callback: `${github_username} was deleted with success!`})}).catch(error=>
-         {res.json({callback: error})});
+        const dev = await Dev.findOne({github_username});
+
+        const [longitude, latitude] = dev.location.coordinates;
+        const techsArray = dev.techs;
+
+        await Dev.deleteOne({ github_username }).then(() => {
+            const sendSocketMessageTo = findConnections({ latitude, longitude }, techsArray);
+
+            sendMessage(sendSocketMessageTo, 'removed-dev', github_username);
+            res.json({ callback: `${github_username} was deleted with success!` })
+        }).catch(error => { res.json({ callback: error }) });
     }
 }
